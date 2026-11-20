@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>幸运大转盘 · 抽奖</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎡</text></svg>">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="lottery-body">
+
+<div class="lottery-wrap">
+
+  <div class="lottery-topbar">
+    <div class="brand">
+      <span class="brand-dot">🎁</span>
+      <span id="brandName">幸运大转盘</span>
+    </div>
+    <div class="row">
+      <span id="soundState" class="tag tag-gray" title="点击切换音效">🔊 音效开</span>
+      <a class="btn btn-sm btn-ghost" href="/">切换团队</a>
+    </div>
+  </div>
+
+  <div class="title-block">
+    <div class="team-badge" id="teamBadge">CC</div>
+    <h1 class="title-main">幸运大转盘</h1>
+    <p class="title-sub" id="teamLabel">TEAM · 专属抽奖</p>
+  </div>
+
+  <div class="wheel-stage">
+    <div class="wheel-holder">
+      <canvas id="wheel"></canvas>
+
+      <div class="pointer" id="pointer">
+        <svg viewBox="0 0 54 74" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="pg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#ffe08a"/>
+              <stop offset="0.5" stop-color="#f3ac26"/>
+              <stop offset="1" stop-color="#cf7f04"/>
+            </linearGradient>
+            <filter id="ps" x="-40%" y="-20%" width="180%" height="150%">
+              <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#8a3d05" flood-opacity="0.4"/>
+            </filter>
+          </defs>
+          <path d="M27 72 L8 30 A19 19 0 1 1 46 30 Z" fill="url(#pg)" stroke="#a86b04" stroke-width="2" filter="url(#ps)"/>
+          <circle cx="27" cy="28" r="8.6" fill="#fffaed" stroke="#a86b04" stroke-width="2"/>
+          <circle cx="27" cy="28" r="3.2" fill="#d98f08"/>
+        </svg>
+      </div>
+
+      <button class="spin-btn" id="spinBtn" type="button" aria-label="开始抽奖">
+        <span>
+          <span class="main">开始</span>
+          <span class="sub">抽奖</span>
+        </span>
+      </button>
+    </div>
+
+    <div class="player-bar" id="playerBar">
+      <span class="player-meta" id="playerText">请先输入姓名开始抽奖</span>
+      <button class="btn btn-sm btn-gold" id="changeNameBtn" type="button">输入姓名</button>
+    </div>
+
+    <div class="wheel-footnote">
+      奖品数量有限，先到先得 · 中奖信息将同步到钉钉群
+    </div>
+  </div>
+</div>
+
+<!-- 姓名输入 -->
+<div class="modal-mask" id="nameMask" hidden>
+  <div class="modal">
+    <h3>请输入你的姓名</h3>
+    <p class="desc" id="nameDesc">仅管理员已添加的同事可以抽奖，姓名需与名单一致</p>
+    <div class="field">
+      <input class="input" id="nameInput" type="text" placeholder="例如：张三" autocomplete="off" maxlength="20">
+    </div>
+    <div class="modal-error" id="nameError"></div>
+    <div class="modal-actions">
+      <button class="btn" id="nameCancel" type="button">取消</button>
+      <button class="btn btn-primary" id="nameOk" type="button">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- 中奖结果 -->
+<div class="modal-mask" id="resultMask" hidden>
+  <div class="modal result-modal">
+    <div class="confetti" id="confetti"></div>
+    <div class="result-ribbon">恭 喜 中 奖</div>
+    <h3 class="result-title" id="resultWho">恭喜你！</h3>
+    <div class="result-prize">
+      <div class="label">你抽中了</div>
+      <div class="name" id="resultPrize">—</div>
+      <div class="amount" id="resultAmount"></div>
+    </div>
+    <div class="result-left" id="resultLeft"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="resultOk" type="button">下一位抽奖 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- 提示 -->
+<div class="modal-mask" id="tipMask" hidden>
+  <div class="modal">
+    <h3 id="tipTitle">提示</h3>
+    <p class="desc" id="tipDesc"></p>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="tipOk" type="button">我知道了</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-holder" id="toastHolder"></div>
+
+<script src="/js/audio.js"></script>
+<script src="/js/wheel.js"></script>
+<script src="/js/draw.js"></script>
+</body>
+</html>

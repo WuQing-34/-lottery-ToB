@@ -1,0 +1,33 @@
+# 依赖
+node_modules/
+
+# 运行时数据（含真实库存/名单/抽奖记录，切勿提交）
+data/
+*.json.new
+lottery-data.json
+db.json
+
+# 日志
+*.log
+logs/
+
+# 私钥与密钥（本地部署用，绝不入库）
+*.pem
+*.key
+*.p12
+id_rsa*
+
+# 环境变量 / 本地配置
+.env
+.env.*
+!.env.example
+
+# 系统/编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# 打包产物与本地文档
+*.tar.gz
+源码浏览.html

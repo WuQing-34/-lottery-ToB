@@ -1,0 +1,17 @@
+{
+  "name": "lucky-wheel-lottery",
+  "version": "1.0.0",
+  "private": true,
+  "description": "大转盘抽奖系统 - 库存管理 + 抽奖页面 + 钉钉群推送",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "audio": "python scripts/gen_audio.py",
+    "test": "node scripts/test-wheel.js && node scripts/test-flow.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "xlsx": "^0.18.5"
+  }
+}

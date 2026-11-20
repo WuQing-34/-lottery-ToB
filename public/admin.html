@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>抽奖系统 · 管理后台</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎡</text></svg>">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="admin-body">
+
+<!-- ================= 登录 ================= -->
+<div class="login-wrap" id="loginView">
+  <form class="login-card" id="loginForm" autocomplete="off">
+    <div class="brand" style="margin-bottom:18px">
+      <span class="brand-dot">🎁</span>
+      <span>抽奖系统 · 管理后台</span>
+    </div>
+    <h1>管理员登录</h1>
+    <p class="sub">输入管理密码以管理礼品库存与抽奖名单</p>
+    <div class="field">
+      <label for="loginPwd">管理密码</label>
+      <input class="input" id="loginPwd" type="password" placeholder="请输入密码">
+    </div>
+    <div class="modal-error" id="loginError"></div>
+    <button class="btn btn-primary mt16" id="loginBtn" type="submit" style="width:100%;height:42px">登录</button>
+    <p class="hint mt12" style="text-align:center">默认密码 <b>CHANGE_ME_2026</b>，登录后可在「系统设置」中修改</p>
+  </form>
+</div>
+
+<!-- ================= 主界面 ================= -->
+<div id="appView" hidden>
+  <header class="admin-header">
+    <div class="admin-header-inner">
+      <div class="left">
+        <span class="brand-dot">🎁</span>
+        <div>
+          <div style="font-weight:700;font-size:14.5px">抽奖系统 · 管理后台</div>
+          <div class="hint">库存与名单改动即时生效</div>
+        </div>
+        <span class="live-dot" id="liveDot"><i></i>实时同步中</span>
+      </div>
+      <div class="rt">
+        <div class="seg" id="teamSwitch">
+          <button class="active" data-team="cc" type="button">CC 团队</button>
+          <button data-team="lp" type="button">LP 团队</button>
+        </div>
+        <a class="btn btn-sm" href="/" target="_blank">团队入口 ↗</a>
+        <button class="btn btn-sm btn-ghost" id="logoutBtn" type="button">退出</button>
+      </div>
+    </div>
+    <div class="admin-header-inner" style="padding-top:0;padding-bottom:10px">
+      <nav class="tabs" id="tabs">
+        <button class="tab active" data-tab="stock" type="button">① 库存管理</button>
+        <button class="tab" data-tab="people" type="button">② 抽奖人管理</button>
+        <button class="tab" data-tab="records" type="button">③ 实物抽奖记录</button>
+        <button class="tab cash-tab" data-tab="cash" type="button">④ 现金抽奖（CC）</button>
+        <button class="tab" data-tab="settings" type="button">⑤ 系统设置</button>
+      </nav>
+      <div class="hint" id="lastSync"></div>
+    </div>
+  </header>
+
+  <div class="admin-shell">
+    <!-- 两个团队总览 -->
+    <div class="card">
+      <div class="card-head">
+        <h2>两个团队总览</h2>
+        <span class="hint">点击卡片切换下方管理范围</span>
+      </div>
+      <div class="card-body">
+        <div class="overview-grid" id="overviewBox"></div>
+      </div>
+    </div>
+
+    <!-- 数据看板（当前团队） -->
+    <div class="stats-grid" id="stats"></div>
+
+    <!-- ---------------- 库存管理 ---------------- -->
+    <section data-panel="stock">
+      <div class="card">
+        <div class="card-head">
+          <h2><span class="num">1</span>通过 Excel 导入礼品 <span class="tag tag-gold" id="importTeamTag">CC 团队</span></h2>
+          <div class="row">
+            <button class="btn btn-sm" id="exportInvBtn" type="button">⬆ 导出库存表</button>
+            <button class="btn btn-sm" id="tplBtn" type="button">⬇ 下载模板</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="grid-2" style="align-items:start">
+            <div>
+              <div class="dropzone" id="dropzone">
+                <div class="ico">📄</div>
+                <div class="t">点击选择，或把 Excel 拖到这里</div>
+                <div class="s">支持 .xlsx / .xls / .csv，表头需包含：礼品名称、库存数量、每次发放数量</div>
+              </div>
+              <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" hidden>
+              <div class="row mt12">
+                <span class="hint">导入方式</span>
+                <div class="seg" id="importMode">
+                  <button class="active" data-mode="merge" type="button">合并（同名更新库存）</button>
+                  <button data-mode="replace" type="button">覆盖（清空后重建）</button>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div id="previewBox"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2><span class="num">2</span>礼品库存看板</h2>
+          <div class="row">
+            <button class="btn btn-sm" id="addPrizeBtn" type="button">＋ 手动新增礼品</button>
+          </div>
+        </div>
+        <div class="card-body tight">
+          <div class="table-scroll">
+            <table class="grid" id="prizeTable">
+              <thead>
+                <tr>
+                  <th>礼品名称</th>
+                  <th class="right">初始库存</th>
+                  <th class="right">已发放</th>
+                  <th class="right">剩余库存</th>
+                  <th class="right">每次发放</th>
+                  <th class="right">剩余可抽次数</th>
+                  <th>库存占比</th>
+                  <th>状态</th>
+                  <th class="right">操作</th>
+                </tr>
+              </thead>
+              <tbody id="prizeBody"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="prizeEmpty" hidden><span class="ico">📦</span>还没有礼品，先上传一份 Excel 或手动新增</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------- 抽奖人 ---------------- -->
+    <section data-panel="people" hidden>
+      <div class="card">
+        <div class="card-head">
+          <h2><span class="num">1</span>添加抽奖人</h2>
+          <div class="seg" id="addMode">
+            <button class="active" data-mode="single" type="button">单个添加</button>
+            <button data-mode="batch" type="button">批量粘贴</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <form class="grid-3" id="singleForm" autocomplete="off">
+            <div class="field">
+              <label for="pName">姓名</label>
+              <input class="input" id="pName" placeholder="例如：张三" maxlength="20">
+            </div>
+            <div class="field">
+              <label for="pChances">抽奖次数</label>
+              <input class="input" id="pChances" type="number" min="1" step="1" value="1">
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button class="btn btn-primary" type="submit" style="width:100%">添加并立即生效</button>
+            </div>
+          </form>
+          <div id="batchForm" hidden>
+            <div class="field">
+              <label for="batchText">每行一个，格式：姓名,次数（次数可省略，默认 1）</label>
+              <textarea class="input" id="batchText" rows="5" placeholder="张三,2&#10;李四,1&#10;王五"></textarea>
+            </div>
+            <div class="row mt12">
+              <button class="btn btn-primary" id="batchSubmit" type="button">批量添加</button>
+              <span class="hint">同名会自动累加次数</span>
+            </div>
+          </div>
+          <div class="warn-box mt16">
+            规则说明：只有在本页添加过的姓名才能抽奖；次数用完后显示「已抽完」，需要你再次添加次数（同名会自动累加）才能继续抽。
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2><span class="num">2</span>抽奖人名单 <span class="tag tag-gold" id="peopleCount">0 人</span></h2>
+          <div class="row">
+            <input class="input" id="peopleSearch" placeholder="搜索姓名…" style="width:180px;height:34px">
+            <button class="btn btn-sm" id="exportBtn" type="button">导出记录</button>
+          </div>
+        </div>
+        <div class="card-body tight">
+          <div class="table-scroll">
+            <table class="grid" id="peopleTable">
+              <thead>
+                <tr>
+                  <th>姓名</th>
+                  <th class="right">总次数</th>
+                  <th class="right">已抽</th>
+                  <th class="right">剩余</th>
+                  <th>状态</th>
+                  <th>最近抽奖</th>
+                  <th>添加时间</th>
+                  <th class="right">操作</th>
+                </tr>
+              </thead>
+              <tbody id="peopleBody"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="peopleEmpty" hidden><span class="ico">🙋</span>还没有抽奖人</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------- 记录 ---------------- -->
+    <section data-panel="records" hidden>
+      <div class="card">
+        <div class="card-head">
+          <h2><span class="num">1</span>抽奖记录 <span class="tag tag-gold" id="recordCount">0 条</span></h2>
+          <div class="row">
+            <a class="btn btn-sm" href="#" id="exportCsv">下载 CSV</a>
+            <button class="btn btn-sm btn-danger" id="clearRecords" type="button">清空记录</button>
+          </div>
+        </div>
+        <div class="card-body tight">
+          <div class="table-scroll">
+            <table class="grid">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>姓名</th>
+                  <th>抽中奖品</th>
+                  <th class="right">发放数量</th>
+                  <th>抽奖时间</th>
+                  <th>钉钉推送</th>
+                </tr>
+              </thead>
+              <tbody id="recordBody"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="recordEmpty" hidden><span class="ico">🎯</span>还没有人抽奖</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>操作日志</h2></div>
+        <div class="card-body tight">
+          <div class="table-scroll" style="max-height:280px;overflow:auto">
+            <table class="grid"><tbody id="logBody"></tbody></table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------- 现金抽奖（CC 专属，与实物完全独立） ---------------- -->
+    <section data-panel="cash" hidden>
+      <div class="card">
+        <div class="card-head"><h2>CC 现金抽奖 · 数据总览</h2><span class="hint" id="cashProbSum"></span></div>
+        <div class="card-body"><div class="stats-grid" id="cashStats" style="margin:0"></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2><span class="num">1</span>通过 Excel 导入现金奖项</h2>
+          <div class="row">
+            <button class="btn btn-sm" id="cashTplBtn" type="button">⬇ 下载模板</button>
+            <button class="btn btn-sm" id="cashExportInvBtn" type="button">⬆ 导出库存表</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="grid-2" style="align-items:start">
+            <div>
+              <div class="dropzone" id="cashDropzone">
+                <div class="ico">💰</div>
+                <div class="t">点击选择，或把 Excel 拖到这里</div>
+                <div class="s">表头需包含：奖项名称、金额、库存数量、每次发放、概率（%）</div>
+              </div>
+              <input type="file" id="cashFileInput" accept=".xlsx,.xls,.csv" hidden>
+              <div class="row mt12">
+                <span class="hint">导入方式</span>
+                <div class="seg" id="cashImportMode">
+                  <button class="active" data-mode="merge" type="button">合并</button>
+                  <button data-mode="replace" type="button">覆盖</button>
+                </div>
+              </div>
+            </div>
+            <div id="cashPreviewBox"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2><span class="num">2</span>现金奖项库存与概率</h2>
+          <div class="row"><button class="btn btn-sm" id="cashAddPrizeBtn" type="button">＋ 手动新增奖项</button></div>
+        </div>
+        <div class="card-body">
+          <div class="warn-box cash-hint">
+            概率由你控制：转盘扇区面积与中奖权重都按「设置概率」分配；设置概率之和不必等于 100，系统按实际占比换算成「实际概率」。库存发完的奖项自动退出转盘。
+          </div>
+          <div class="table-scroll mt12">
+            <table class="grid">
+              <thead>
+                <tr>
+                  <th>奖项名称</th><th class="right">金额(元)</th><th class="right">剩余库存</th>
+                  <th class="right">每次发放</th><th class="right">可抽次数</th>
+                  <th>设置概率 / 实际概率</th><th>状态</th><th class="right">操作</th>
+                </tr>
+              </thead>
+              <tbody id="cashPrizeBody"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="cashPrizeEmpty" hidden><span class="ico">💰</span>还没有现金奖项，先导入 Excel 或手动新增</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2><span class="num">3</span>现金抽奖名单 <span class="tag tag-gold" id="cashPeopleCount">0 人</span></h2>
+          <div class="seg" id="cashAddMode">
+            <button class="active" data-mode="single" type="button">单个添加</button>
+            <button data-mode="batch" type="button">批量粘贴</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <form class="grid-3" id="cashSingleForm" autocomplete="off">
+            <div class="field"><label for="cashPName">姓名</label><input class="input" id="cashPName" placeholder="例如：张三" maxlength="20"></div>
+            <div class="field"><label for="cashPChances">现金抽奖次数</label><input class="input" id="cashPChances" type="number" min="1" step="1" value="1"></div>
+            <div class="field"><label>&nbsp;</label><button class="btn btn-primary" type="submit" style="width:100%">添加并立即生效</button></div>
+          </form>
+          <div id="cashBatchForm" hidden>
+            <div class="field">
+              <label for="cashBatchText">每行一个，格式：姓名,次数（次数可省略，默认 1）</label>
+              <textarea class="input" id="cashBatchText" rows="4" placeholder="张三,2&#10;李四,1"></textarea>
+            </div>
+            <div class="row mt12"><button class="btn btn-primary" id="cashBatchSubmit" type="button">批量添加</button><span class="hint">与实物名单、次数完全独立</span></div>
+          </div>
+          <div class="warn-box mt16">只有这里添加的姓名才能进入现金抽奖页；次数用完后需再次添加（同名自动累加）。实物抽奖的名单和次数不会同步到这里。</div>
+          <div class="row mt12">
+            <input class="input" id="cashPeopleSearch" placeholder="搜索姓名…" style="width:200px;height:34px">
+          </div>
+          <div class="table-scroll mt12">
+            <table class="grid">
+              <thead><tr><th>姓名</th><th class="right">总次数</th><th class="right">已抽</th><th class="right">剩余</th><th>状态</th><th>最近抽奖</th><th class="right">操作</th></tr></thead>
+              <tbody id="cashPeopleBody"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="cashPeopleEmpty" hidden><span class="ico">🙋</span>还没有现金抽奖人</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2><span class="num">4</span>现金抽奖记录 <span class="tag tag-gold" id="cashRecordCount">0 条</span></h2>
+          <div class="row">
+            <button class="btn btn-sm" id="cashExportRecords" type="button">导出记录</button>
+            <button class="btn btn-sm btn-danger" id="cashClearRecords" type="button">清空记录</button>
+          </div>
+        </div>
+        <div class="card-body tight">
+          <div class="table-scroll">
+            <table class="grid">
+              <thead><tr><th>#</th><th>姓名</th><th>抽中奖项</th><th class="right">份数</th><th>抽奖时间</th><th>钉钉推送</th></tr></thead>
+              <tbody id="cashRecordsBody"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="cashRecordsEmpty" hidden><span class="ico">🎯</span>还没有人抽现金</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>现金抽奖 · 重置操作</h2></div>
+        <div class="card-body">
+          <div class="danger-zone">
+            <div class="between">
+              <div><b style="font-size:13.5px">恢复现金库存 / 重置现金次数</b><div class="hint">只影响现金抽奖，实物库存与次数不变</div></div>
+              <div class="row">
+                <button class="btn btn-sm" id="cashResetStock" type="button">恢复库存</button>
+                <button class="btn btn-sm" id="cashResetChances" type="button">重置次数</button>
+              </div>
+            </div>
+            <hr style="border:0;border-top:1px solid #f2e2dd;margin:14px 0">
+            <div class="between">
+              <div><b style="font-size:13.5px;color:var(--red)">清空现金抽奖全部数据</b><div class="hint">删除全部现金奖项、名单与记录，不可恢复</div></div>
+              <button class="btn btn-sm btn-danger" id="cashResetAll" type="button">清空现金数据</button>
+            </div>
+          </div>
+          <a class="btn mt16" href="/cash" target="_blank">打开 CC 现金抽奖页 ↗</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------- 设置 ---------------- -->
+    <section data-panel="settings" hidden>
+      <div class="card">
+        <div class="card-head"><h2>团队设置</h2></div>
+        <div class="card-body">
+          <div class="grid-2">
+            <div class="field">
+              <label for="cfgTeamCc">CC 团队显示名</label>
+              <input class="input" id="cfgTeamCc" maxlength="20" placeholder="CC 团队">
+            </div>
+            <div class="field">
+              <label for="cfgTeamLp">LP 团队显示名</label>
+              <input class="input" id="cfgTeamLp" maxlength="20" placeholder="LP 团队">
+            </div>
+          </div>
+          <div class="row mt16">
+            <button class="btn btn-primary" id="saveTeams" type="button">保存团队名称</button>
+            <button class="btn" id="exportAllInv" type="button">⬆ 导出全部团队库存</button>
+            <span class="hint">抽奖页地址：CC → <b>/cc</b>　LP → <b>/lp</b></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>库存日报（钉钉自动推送）</h2>
+          <div class="row">
+            <button class="btn btn-sm" id="previewReport" type="button">预览文案</button>
+            <button class="btn btn-sm" id="sendReport" type="button">立即推送一次</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="grid-3">
+            <div class="field">
+              <label for="cfgReportOn">自动推送</label>
+              <select class="select" id="cfgReportOn">
+                <option value="1">开启</option>
+                <option value="0">关闭</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="cfgReportTime">每天推送时间（北京时间）</label>
+              <input class="input" id="cfgReportTime" type="time" value="18:30">
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button class="btn btn-primary" id="saveReport" type="button" style="width:100%">保存</button>
+            </div>
+          </div>
+          <pre class="report-preview" id="reportPreview" hidden></pre>
+          <div class="hint mt8">
+            每天到点自动把两个团队全部礼品的「已发放 / 剩余库存 / 可抽次数」推到上面配置的钉钉群；
+            服务重启也不会漏发（当天已发过则不再重复）。
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>钉钉群机器人</h2>
+          <div class="row">
+            <button class="btn btn-sm" id="testRobot" type="button">发送测试消息</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="field">
+            <label for="cfgWebhook">Webhook 地址</label>
+            <input class="input mono" id="cfgWebhook" placeholder="https://oapi.dingtalk.com/robot/send?access_token=...">
+          </div>
+          <div class="grid-2 mt12">
+            <div class="field">
+              <label for="cfgSecret">加签密钥（可选，安全设置为「加签」时填写）</label>
+              <input class="input mono" id="cfgSecret" placeholder="SEC...">
+            </div>
+            <div class="field">
+              <label>消息文案</label>
+              <input class="input" value="[姓名]抽中[奖品]" disabled>
+            </div>
+          </div>
+          <div class="row mt16">
+            <button class="btn btn-primary" id="saveWebhook" type="button">保存</button>
+            <span class="hint">若机器人使用「自定义关键词」，关键词请填「抽中」</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>抽奖页与转盘</h2></div>
+        <div class="card-body">
+          <div class="grid-3">
+            <div class="field">
+              <label for="cfgSegments">转盘最多显示奖品数</label>
+              <select class="select" id="cfgSegments">
+                <option value="6">6 格</option>
+                <option value="8">8 格</option>
+                <option value="10">10 格</option>
+                <option value="12">12 格</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="cfgSound">抽奖音效</label>
+              <select class="select" id="cfgSound">
+                <option value="1">开启</option>
+                <option value="0">关闭</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="cfgAtAll">中奖时 @所有人</label>
+              <select class="select" id="cfgAtAll">
+                <option value="0">不 @</option>
+                <option value="1">@所有人</option>
+              </select>
+            </div>
+          </div>
+          <div class="row mt16">
+            <button class="btn btn-primary" id="saveWheelCfg" type="button">保存</button>
+            <span class="hint" id="wheelOverflow"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>管理密码</h2></div>
+        <div class="card-body">
+          <form class="grid-3" id="pwdForm" autocomplete="off">
+            <div class="field">
+              <label for="cfgPwd">新的管理密码</label>
+              <input class="input" id="cfgPwd" type="password" placeholder="至少 4 位">
+            </div>
+            <div class="field">
+              <label for="cfgPwd2">确认新密码</label>
+              <input class="input" id="cfgPwd2" type="password" placeholder="再输入一次">
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button class="btn btn-primary" type="submit" style="width:100%">修改密码</button>
+            </div>
+          </form>
+          <p class="hint mt8" id="pwdHint"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>危险操作 <span class="tag tag-gold" id="dangerScope">CC 团队</span></h2></div>
+        <div class="card-body">
+          <div class="danger-zone">
+            <div class="between">
+              <div>
+                <b style="font-size:13.5px">恢复库存 / 重置抽奖次数</b>
+                <div class="hint" id="dangerHint">只影响当前选中的团队，不影响另一个团队</div>
+              </div>
+              <div class="row">
+                <button class="btn btn-sm" id="resetStock" type="button">恢复库存</button>
+                <button class="btn btn-sm" id="resetChances" type="button">重置次数</button>
+              </div>
+            </div>
+            <hr style="border:0;border-top:1px solid #f2e2dd;margin:14px 0">
+            <div class="between">
+              <div>
+                <b style="font-size:13.5px;color:var(--red)">清空当前团队全部数据</b>
+                <div class="hint">删除该团队的礼品、抽奖人、记录，操作不可恢复</div>
+              </div>
+              <button class="btn btn-sm btn-danger" id="resetAll" type="button">清空当前团队</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- 通用表单弹窗 -->
+<div class="modal-mask" id="formMask" hidden>
+  <div class="modal">
+    <h3 id="formTitle">编辑</h3>
+    <p class="desc" id="formDesc"></p>
+    <div id="formFields"></div>
+    <div class="modal-error" id="formError"></div>
+    <div class="modal-actions">
+      <button class="btn" id="formCancel" type="button">取消</button>
+      <button class="btn btn-primary" id="formOk" type="button">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 确认弹窗 -->
+<div class="modal-mask" id="confirmMask" hidden>
+  <div class="modal">
+    <h3 id="confirmTitle">确认</h3>
+    <p class="desc" id="confirmDesc"></p>
+    <div class="modal-actions">
+      <button class="btn" id="confirmCancel" type="button">取消</button>
+      <button class="btn btn-danger" id="confirmOk" type="button">确认执行</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-holder" id="toastHolder"></div>
+
+<script src="/vendor/xlsx.full.min.js"></script>
+<script src="/js/admin.js"></script>
+<script src="/js/admin-cash.js"></script>
+</body>
+</html>
