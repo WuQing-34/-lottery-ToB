@@ -324,7 +324,6 @@
     };
     setIfIdle('cfgWebhook', c.webhook || '');
     if (document.activeElement !== $('cfgSecret')) $('cfgSecret').value = c.secret || '';
-    setIfIdle('cfgSegments', String(c.maxSegments || 12));
     setIfIdle('cfgSound', c.soundOn ? '1' : '0');
     setIfIdle('cfgAtAll', c.atAll ? '1' : '0');
     const tm = c.teams || {};
@@ -336,10 +335,7 @@
     $('pwdHint').textContent = c.passwordIsDefault ? '当前仍在使用默认密码 CHANGE_ME_2026，建议尽快修改' : '密码已自定义';
 
     const seg = (state.wheel && state.wheel.segments) || [];
-    const overflow = (state.wheel && state.wheel.overflow) || [];
-    $('wheelOverflow').innerHTML = overflow.length
-      ? `<span style="color:var(--red)">⚠ ${teamName(team)}有 ${overflow.length} 个奖品超出转盘格数（${overflow.map(esc).join('、')}），暂不参与抽奖</span>`
-      : `当前${teamName(team)}转盘 ${seg.length} 个奖品`;
+    $('wheelOverflow').innerHTML = `当前${teamName(team)}转盘 ${seg.length} 个奖品（全部有库存奖品均已上转盘，数量不限）`;
   }
 
   function renderTeamLabels() {
@@ -831,7 +827,6 @@
       await api('/api/admin/config', {
         method: 'PATCH',
         body: JSON.stringify({
-          maxSegments: Number($('cfgSegments').value),
           soundOn: $('cfgSound').value === '1',
           atAll: $('cfgAtAll').value === '1',
         }),
