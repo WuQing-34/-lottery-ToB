@@ -11,7 +11,6 @@ const bus = require('./bus');
 const { nameKey, teamName } = require('./lottery');
 
 const MAX_RECORDS = 2000;
-const MAX_SEGMENTS = 12;
 
 function num(v, def = 0) {
   if (v === null || v === undefined || v === '') return def;
@@ -95,21 +94,21 @@ function stats() {
 
 function wheel() {
   const db = store.get();
-  const cap = Math.min(MAX_SEGMENTS, Math.max(4, num(db.config.maxSegments, 12)));
+  // 数量不设上限：所有有库存的现金奖项都上转盘，新增奖项即时显示
   const all = (db.cashPrizes || [])
     .filter((p) => remainingWins(p) > 0)
     .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
   const probs = effectiveProbabilities(all);
   return {
-    cap,
-      // 扇区面积一律等分，不下发 weight；中奖概率由 pickByProbability 按 probability 独立决定
-      segments: all.slice(0, cap).map((p) => ({
-        id: p.id,
-        name: p.name,
-        amount: num(p.amount, 0),
-        probability: probs[p.id],
-      })),
-    overflow: all.slice(cap).map((p) => p.name),
+    cap: all.length,
+    // 扇区面积一律等分，不下发 weight；中奖概率由 pickByProbability 按 probability 独立决定
+    segments: all.map((p) => ({
+      id: p.id,
+      name: p.name,
+      amount: num(p.amount, 0),
+      probability: probs[p.id],
+    })),
+    overflow: [],
     probabilitySum: Math.round(all.reduce((s, p) => s + Math.max(0, num(p.probability, 0)), 0) * 100) / 100,
   };
 }
@@ -393,7 +392,6 @@ function reset(what) {
 }
 
 module.exports = {
-  MAX_SEGMENTS,
   num,
   remainingWins,
   effectiveProbabilities,
