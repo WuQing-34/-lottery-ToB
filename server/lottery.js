@@ -83,14 +83,13 @@ function decorateParticipant(p) {
   };
 }
 
-/** 当前上转盘的奖品：该团队有货 + 不超过转盘格子数 */
+/** 当前上转盘的奖品：该团队所有有货的奖品（数量不设上限，新增礼品即时显示） */
 function wheelPrizes(team) {
   const db = store.get();
-  const cap = Math.min(12, Math.max(4, num(db.config.maxSegments, 12)));
   const all = scope(db.prizes, team)
     .filter((p) => remainingWins(p) > 0)
     .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
-  return { cap, onWheel: all.slice(0, cap), overflow: all.slice(cap) };
+  return { cap: all.length, onWheel: all, overflow: [] };
 }
 
 function wheel(team) {
