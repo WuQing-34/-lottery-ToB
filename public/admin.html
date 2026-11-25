@@ -92,7 +92,7 @@
               <div class="dropzone" id="dropzone">
                 <div class="ico">📄</div>
                 <div class="t">点击选择，或把 Excel 拖到这里</div>
-                <div class="s">支持 .xlsx / .xls / .csv，表头需包含：礼品名称、库存数量、每次发放数量</div>
+                <div class="s">支持 .xlsx / .xls / .csv，表头需包含：礼品名称、库存数量、每次发放数量；概率（%）选填</div>
               </div>
               <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" hidden>
               <div class="row mt12">
@@ -118,7 +118,11 @@
           </div>
         </div>
         <div class="card-body tight">
-          <div class="table-scroll">
+          <div class="warn-box cash-hint">
+            概率由你控制：转盘扇区仍一律等分（面积与概率无关）；中奖只按「设置概率」决定。设置概率之和不必等于 100，系统换算成「实际概率」。概率为 0 的礼品永不命中；全部不填时按库存可抽次数加权。
+          </div>
+          <div class="hint mt8" id="goodsProbSum"></div>
+          <div class="table-scroll mt12">
             <table class="grid" id="prizeTable">
               <thead>
                 <tr>
@@ -128,6 +132,7 @@
                   <th class="right">剩余库存</th>
                   <th class="right">每次发放</th>
                   <th class="right">剩余可抽次数</th>
+                  <th>设置概率 / 实际概率</th>
                   <th>库存占比</th>
                   <th>状态</th>
                   <th class="right">操作</th>
