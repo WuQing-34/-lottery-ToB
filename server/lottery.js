@@ -50,14 +50,64 @@ function remainingWins(prize) {
   return Math.max(0, Math.floor(num(prize.stock, 0) / per));
 }
 
-function decoratePrize(p) {
+/** 是否配置了概率（有货礼品里任意一个 probability > 0 即视为启用概率抽奖） */
+function probabilityEnabled(list) {
+  return list.some((p) => Math.max(0, num(p.probability, 0)) > 0);
+}
+
+/**
+ * 实际生效概率（%）：启用概率时按「设置概率」归一化（0 不参与）；
+ * 未启用（老数据全部为 0）时按「剩余可抽次数」归一化，保持历史行为。
+ */
+function effectiveProbabilities(prizes) {
+  const active = prizes.filter((p) => remainingWins(p) > 0);
+  if (!active.length) return {};
+  const enabled = probabilityEnabled(active);
+  const weights = active.map((p) => (enabled
+    ? Math.max(0, num(p.probability, 0))
+    : remainingWins(p)));
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const out = {};
+  active.forEach((p, i) => {
+    out[p.id] = sum > 0
+      ? Math.round((weights[i] / sum) * 10000) / 100
+      : Math.round((100 / active.length) * 100) / 100;
+  });
+  return out;
+}
+
+/** 按概率抽取，返回在 list 中的下标；rand 可注入用于测试 */
+function pickByProbability(list, rand) {
+  const active = list.filter((p) => remainingWins(p) > 0);
+  if (!active.length) return -1;
+  const enabled = probabilityEnabled(active);
+  let weights = active.map((p) => (enabled
+    ? Math.max(0, num(p.probability, 0))
+    : remainingWins(p)));
+  let total = weights.reduce((a, b) => a + b, 0);
+  if (total <= 0) {
+    weights = active.map(() => 1);
+    total = active.length;
+  }
+  let r = (typeof rand === 'function' ? rand() : Math.random()) * total;
+  for (let i = 0; i < active.length; i += 1) {
+    r -= weights[i];
+    if (r < 0) return i;
+  }
+  return active.length - 1;
+}
+
+function decoratePrize(p, probs) {
   const per = Math.max(1, num(p.perDraw, 1));
+  const prob = probs ? probs[p.id] : undefined;
   return {
     id: p.id,
     team: p.team,
     name: p.name,
     stock: num(p.stock, 0),
     perDraw: per,
+    probability: Math.max(0, num(p.probability, 0)),
+    effectiveProbability: prob === undefined ? null : prob,
     initial: num(p.initial, 0),
     awarded: num(p.awarded, 0),
     remainingWins: remainingWins(p),
@@ -94,12 +144,20 @@ function wheelPrizes(team) {
 
 function wheel(team) {
   const { cap, onWheel, overflow } = wheelPrizes(team);
+  const probs = effectiveProbabilities(onWheel);
   return {
     team,
     teamName: teamName(team),
     cap,
-    segments: onWheel.map((p) => ({ id: p.id, name: p.name, perDraw: num(p.perDraw, 1) })),
+    // 扇区面积一律等分，不下发 weight；概率只决定服务端抽取结果
+    segments: onWheel.map((p) => ({
+      id: p.id,
+      name: p.name,
+      perDraw: num(p.perDraw, 1),
+      probability: probs[p.id],
+    })),
     overflow: overflow.map((p) => p.name),
+    probabilitySum: Math.round(onWheel.reduce((s, p) => s + Math.max(0, num(p.probability, 0)), 0) * 100) / 100,
   };
 }
 
@@ -137,15 +195,19 @@ function overview() {
 function publicState(team) {
   const db = store.get();
   const t = assertTeam(team, true);
+  const prizes = scope(db.prizes, t);
+  const probs = effectiveProbabilities(prizes);
   return {
     team: t,
     teams: teamList(),
-    prizes: scope(db.prizes, t).map(decoratePrize),
+    prizes: prizes.map((p) => decoratePrize(p, probs)),
     participants: scope(db.participants, t).map(decorateParticipant),
     records: scope(db.records, t).slice(0, 100),
     logs: db.logs.slice(0, 60),
     stats: stats(t),
     overview: overview(),
+    probabilitySum: Math.round(prizes.reduce((s, p) => s + Math.max(0, num(p.probability, 0)), 0) * 100) / 100,
+    probabilityEnabled: probabilityEnabled(prizes.filter((p) => remainingWins(p) > 0)),
     config: {
       soundOn: !!db.config.soundOn,
       maxSegments: db.config.maxSegments,
@@ -156,13 +218,14 @@ function publicState(team) {
 
 /* ---------------- 奖品 ---------------- */
 
-function upsertPrize({ id, team, name, stock, perDraw }) {
+function upsertPrize({ id, team, name, stock, perDraw, probability }) {
   const db = store.get();
   const t = assertTeam(team);
   const cleanName = String(name || '').trim();
   if (!cleanName) throw badRequest('礼品名称不能为空');
   const s = Math.max(0, Math.floor(num(stock, 0)));
   const per = Math.max(1, Math.floor(num(perDraw, 1)));
+  const prob = Math.min(100, Math.max(0, num(probability, 0)));
 
   let prize = id
     ? db.prizes.find((p) => p.id === id)
@@ -173,6 +236,7 @@ function upsertPrize({ id, team, name, stock, perDraw }) {
     prize.name = cleanName;
     prize.stock = s;
     prize.perDraw = per;
+    prize.probability = prob;
     prize.initial = s + num(prize.awarded, 0);
     prize.updatedAt = new Date().toISOString();
   } else {
@@ -182,6 +246,7 @@ function upsertPrize({ id, team, name, stock, perDraw }) {
       name: cleanName,
       stock: s,
       perDraw: per,
+      probability: prob,
       initial: s,
       awarded: 0,
       createdAt: new Date().toISOString(),
@@ -190,19 +255,19 @@ function upsertPrize({ id, team, name, stock, perDraw }) {
     db.prizes.push(prize);
   }
   store.save();
-  return decoratePrize(prize);
+  return decoratePrize(prize, effectiveProbabilities(db.prizes.filter((p) => p.team === t)));
 }
 
 /**
  * Excel 导入
- * rows: [{ name, stock, perDraw }]
+ * rows: [{ name, stock, perDraw, probability }]（probability 选填，0 = 未配置）
  * mode: 'merge' 合并（同名更新库存） | 'replace' 覆盖（清空该团队后重建）
  */
 function importPrizes(rows, mode, team) {
   const db = store.get();
   const t = assertTeam(team);
   const list = (Array.isArray(rows) ? rows : []).filter((r) => String((r && r.name) || '').trim());
-  if (!list.length) throw badRequest('没有解析到有效数据，请检查表格表头是否为：礼品名称 / 库存数量 / 每次发放数量');
+  if (!list.length) throw badRequest('没有解析到有效数据，请检查表格表头是否为：礼品名称 / 库存数量 / 每次发放数量 / 概率（选填）');
 
   if (mode === 'replace') {
     db.prizes = db.prizes.filter((p) => p.team !== t);
@@ -214,16 +279,18 @@ function importPrizes(rows, mode, team) {
     const cleanName = String(r.name).trim();
     const s = Math.max(0, Math.floor(num(r.stock, 0)));
     const per = Math.max(1, Math.floor(num(r.perDraw, 1)));
+    const prob = Math.min(100, Math.max(0, num(r.probability, 0)));
     let prize = db.prizes.find((p) => p.team === t && nameKey(p.name) === nameKey(cleanName));
     if (prize) {
       prize.stock = s;
       prize.perDraw = per;
+      prize.probability = prob;
       prize.initial = s + num(prize.awarded, 0);
       prize.updatedAt = now;
       updated += 1;
     } else {
       db.prizes.push({
-        id: store.uid('pz'), team: t, name: cleanName, stock: s, perDraw: per,
+        id: store.uid('pz'), team: t, name: cleanName, stock: s, perDraw: per, probability: prob,
         initial: s, awarded: 0, createdAt: now, updatedAt: now,
       });
       created += 1;
@@ -253,7 +320,7 @@ function restockPrize(id, stock) {
   prize.updatedAt = new Date().toISOString();
   store.save();
   store.addLog('prize', `[${teamName(prize.team)}] 调整库存：${prize.name} → ${prize.stock}`);
-  return decoratePrize(prize);
+  return decoratePrize(prize, effectiveProbabilities(db.prizes.filter((p) => p.team === prize.team)));
 }
 
 /* ---------------- 抽奖人 ---------------- */
@@ -343,20 +410,9 @@ function draw(team, rawName) {
   }
   if (!onWheel.length) throw httpError('NO_STOCK', '奖品库存已发完，请联系管理员补充', 409);
 
-  // 按「可发放次数」加权，保证各奖项被抽中的机会与其库存量成正比
-  const weights = onWheel.map((p) => remainingWins(p));
-  const totalW = weights.reduce((a, b) => a + b, 0);
-  let r = Math.random() * totalW;
-  let index = 0;
-  for (let i = 0; i < onWheel.length; i += 1) {
-    r -= weights[i];
-    if (r <= 0) {
-      index = i;
-      break;
-    }
-    index = i;
-  }
-
+  // 按「设置概率」抽取；未配置概率时按「剩余可抽次数」加权（老数据行为不变）
+  const index = pickByProbability(onWheel);
+  if (index < 0) throw httpError('NO_STOCK', '奖品库存已发完，请联系管理员补充', 409);
   const prize = onWheel[index];
   const per = Math.max(1, num(prize.perDraw, 1));
 
@@ -408,7 +464,7 @@ function draw(team, rawName) {
     remaining: Math.max(0, person.chances - person.used),
     used: person.used,
     chances: person.chances,
-    prize: decoratePrize(prize),
+    prize: decoratePrize(prize, effectiveProbabilities(onWheel)),
     stats: stats(t),
   };
 }
@@ -464,5 +520,8 @@ module.exports = {
   decoratePrize,
   decorateParticipant,
   remainingWins,
+  probabilityEnabled,
+  effectiveProbabilities,
+  pickByProbability,
   nameKey,
 };
