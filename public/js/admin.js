@@ -13,7 +13,7 @@
   let state = {
     prizes: [], participants: [], records: [], logs: [],
     stats: {}, config: {}, wheel: { segments: [], overflow: [] },
-    overview: [], teams: [],
+    overview: [], teams: [], probabilityEnabled: false,
   };
   let currentTab = 'stock';
 
@@ -154,6 +154,7 @@
         wheel: data.wheel || { segments: [], overflow: [] },
         overview: data.overview || [],
         teams: data.teams || [],
+        probabilityEnabled: !!data.probabilityEnabled,
       };
       renderAll();
       if (silent !== true) {
@@ -234,9 +235,16 @@
   function renderPrizes() {
     const list = state.prizes;
     $('prizeEmpty').hidden = list.length > 0;
+    const sum = list.reduce((a, p) => a + Number(p.probability || 0), 0);
+    $('goodsProbSum').textContent = list.length
+      ? (state.probabilityEnabled
+        ? `设置概率合计 ${Math.round(sum * 100) / 100}% · 按概率抽奖（扇区等分）`
+        : '当前未配置概率：沿用按库存可抽次数加权。给任意礼品填入概率即切换为按概率抽奖')
+      : '';
     $('prizeBody').innerHTML = list.map((p) => {
       const pct = p.initial > 0 ? Math.min(100, Math.round((p.stock / p.initial) * 100)) : 0;
       const low = pct <= 20 ? 'low' : '';
+      const probPct = Math.min(100, Number(p.probability) || 0);
       return `<tr>
         <td class="name-cell">${esc(p.name)}</td>
         <td class="right num-cell">${p.initial}</td>
@@ -244,6 +252,7 @@
         <td class="right num-cell"><b>${p.stock}</b></td>
         <td class="right num-cell">${p.perDraw}</td>
         <td class="right num-cell">${p.remainingWins}</td>
+        <td><div class="prob-bar"><i style="width:${Math.max(2, probPct)}%"></i><span class="prob-num">${p.probability}%</span><span class="hint">实际 ${p.effectiveProbability === null ? '—' : p.effectiveProbability + '%'}</span></div></td>
         <td><div class="stock-bar ${low}"><i style="width:${pct}%"></i></div></td>
         <td>${prizeStatus(p)}</td>
         <td class="right">
@@ -390,6 +399,7 @@
   const NAME_KEYS = ['礼品', '奖品', '名称', '物品', '商品', '奖项', '产品'];
   const PER_KEYS = ['每次', '发放', '单次', '每份', '单份'];
   const STOCK_KEYS = ['库存', '数量', '总数', '剩余', '份数', '个数'];
+  const PROB_KEYS = ['概率', '权重', '占比'];
 
   function parseMatrix(matrix) {
     const norm = matrix.map((row) => (row || []).map((c) => String(c === undefined || c === null ? '' : c).trim()));
@@ -402,7 +412,8 @@
         if (!cell) return;
         if (m.name === undefined && NAME_KEYS.some((k) => cell.includes(k))) { m.name = ci; return; }
         if (m.per === undefined && PER_KEYS.some((k) => cell.includes(k))) { m.per = ci; return; }
-        if (m.stock === undefined && STOCK_KEYS.some((k) => cell.includes(k))) { m.stock = ci; }
+        if (m.stock === undefined && STOCK_KEYS.some((k) => cell.includes(k))) { m.stock = ci; return; }
+        if (m.prob === undefined && PROB_KEYS.some((k) => cell.includes(k))) { m.prob = ci; }
       });
       if (m.name !== undefined && m.stock !== undefined) { headerIdx = i; map = m; break; }
     }
@@ -423,7 +434,8 @@
       const stock = map.stock !== undefined ? toNum(row[map.stock]) : 0;
       const per = map.per !== undefined ? toNum(row[map.per]) || 1 : 1;
       if (!stock && !row[map.stock]) continue;
-      rows.push({ name, stock, perDraw: Math.max(1, per) });
+      const prob = map.prob !== undefined ? Math.min(100, Math.max(0, toNum(row[map.prob]))) : 0;
+      rows.push({ name, stock, perDraw: Math.max(1, per), probability: prob });
     }
     return rows;
   }
@@ -441,7 +453,7 @@
         const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
         const rows = parseMatrix(matrix);
         if (!rows.length) {
-          $('previewBox').innerHTML = '<div class="warn-box">没有解析到有效数据，请检查表格是否包含「礼品名称 / 库存数量 / 每次发放数量」三列。</div>';
+          $('previewBox').innerHTML = '<div class="warn-box">没有解析到有效数据，请检查表格是否包含「礼品名称 / 库存数量 / 每次发放数量」三列（概率列选填）。</div>';
           parsedRows = null;
           return;
         }
@@ -458,15 +470,16 @@
   function renderPreview(fileName) {
     const rows = parsedRows || [];
     const totalWins = rows.reduce((s, r) => s + Math.floor(r.stock / r.perDraw), 0);
+    const probSum = rows.reduce((s, r) => s + (r.probability || 0), 0);
     const shown = rows.slice(0, 12);
     $('previewBox').innerHTML = `
       <div class="between" style="margin-bottom:8px">
         <div><b>${esc(fileName)}</b> <span class="hint">解析到 ${rows.length} 个礼品</span></div>
-        <span class="tag tag-gold">共可抽 ${totalWins} 次</span>
+        <span class="tag tag-gold">共可抽 ${totalWins} 次 · 概率合计 ${Math.round(probSum * 100) / 100}%</span>
       </div>
       <div class="preview-table">
         <table class="grid">
-          <thead><tr><th>#</th><th>礼品名称</th><th class="right">库存</th><th class="right">每次发放</th><th class="right">可抽次数</th></tr></thead>
+          <thead><tr><th>#</th><th>礼品名称</th><th class="right">库存</th><th class="right">每次发放</th><th class="right">可抽次数</th><th class="right">概率</th></tr></thead>
           <tbody>
             ${shown.map((r, i) => `<tr>
               <td class="hint num-cell">${i + 1}</td>
@@ -474,6 +487,7 @@
               <td class="right num-cell">${r.stock}</td>
               <td class="right num-cell">${r.perDraw}</td>
               <td class="right num-cell">${Math.floor(r.stock / r.perDraw)}</td>
+              <td class="right num-cell">${r.probability || 0}%</td>
             </tr>`).join('')}
           </tbody>
         </table>
@@ -516,14 +530,14 @@
       return;
     }
     const aoa = [
-      ['礼品名称', '库存数量', '每次发放数量'],
-      ['保温杯', 10, 1],
-      ['蓝牙音箱', 5, 1],
-      ['100元购物卡', 3, 1],
-      ['定制帆布袋', 20, 2],
+      ['礼品名称', '库存数量', '每次发放数量', '概率'],
+      ['保温杯', 10, 1, 40],
+      ['蓝牙音箱', 5, 1, 30],
+      ['100元购物卡', 3, 1, 20],
+      ['定制帆布袋', 20, 2, 10],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{ wch: 22 }, { wch: 12 }, { wch: 16 }];
+    ws['!cols'] = [{ wch: 22 }, { wch: 12 }, { wch: 16 }, { wch: 10 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '礼品库存');
     XLSX.writeFile(wb, `礼品导入模板-${teamName(team)}.xlsx`);
@@ -621,6 +635,7 @@
         { key: 'name', label: '礼品名称', placeholder: '例如：保温杯' },
         { key: 'stock', label: '库存数量', type: 'number', value: 10, min: 0 },
         { key: 'perDraw', label: '每次发放数量', type: 'number', value: 1, min: 1, hint: '抽中一次扣减的件数' },
+        { key: 'probability', label: '设置概率（%）', type: 'number', value: 10, min: 0, step: 0.01, hint: '数字越大越容易抽中；全部填 0 则按库存加权' },
       ],
     });
     if (!v) return;
@@ -669,6 +684,7 @@
           { key: 'name', label: '礼品名称', value: p.name },
           { key: 'stock', label: '剩余库存', type: 'number', value: p.stock, min: 0 },
           { key: 'perDraw', label: '每次发放数量', type: 'number', value: p.perDraw, min: 1 },
+          { key: 'probability', label: '设置概率（%）', type: 'number', value: p.probability, min: 0, step: 0.01, hint: '实际概率由所有礼品设置概率自动换算' },
         ],
       });
       if (!v) return;
