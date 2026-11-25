@@ -459,11 +459,12 @@ app.get('/api/admin/export/inventory.xlsx', requireAdmin, (req, res) => {
   }
 
   teams.forEach((id) => {
+    const prizes = lottery.scope(db.prizes, id);
+    const probs = lottery.effectiveProbabilities(prizes);
     const rows = [[
-      '序号', '礼品名称', '初始库存', '已发放', '剩余库存', '每次发放数量', '剩余可抽次数', '状态', '最近更新',
+      '序号', '礼品名称', '初始库存', '已发放', '剩余库存', '每次发放数量', '剩余可抽次数', '设置概率(%)', '实际概率(%)', '状态', '最近更新',
     ]];
-    lottery
-      .scope(db.prizes, id)
+    prizes
       .forEach((p, i) => {
         rows.push([
           i + 1,
@@ -473,13 +474,15 @@ app.get('/api/admin/export/inventory.xlsx', requireAdmin, (req, res) => {
           Number(p.stock) || 0,
           Number(p.perDraw) || 1,
           lottery.remainingWins(p),
+          Number(p.probability) || 0,
+          probs[p.id] === undefined ? '' : probs[p.id],
           priStatus(p),
           p.updatedAt ? new Date(p.updatedAt).toLocaleString('zh-CN') : '',
         ]);
       });
-    if (rows.length === 1) rows.push(['', '（该团队暂无礼品）', '', '', '', '', '', '', '']);
+    if (rows.length === 1) rows.push(['', '（该团队暂无礼品）', '', '', '', '', '', '', '', '', '']);
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{ wch: 6 }, { wch: 24 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 22 }];
+    ws['!cols'] = [{ wch: 6 }, { wch: 24 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 22 }];
     const sheetName = (lottery.teamName(id).replace(/[[\]:*?/\\]/g, '') || id).slice(0, 28);
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
   });
