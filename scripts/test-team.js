@@ -8,6 +8,7 @@
  */
 const http = require('http');
 const XLSX = require('xlsx');
+const lottery = require('../server/lottery');
 
 const BASE = process.env.BASE || 'http://127.0.0.1:8082';
 const MOCK_PORT = 3998;
@@ -64,10 +65,11 @@ function mockServer() {
   await api('/api/admin/config', { method: 'PATCH', body: JSON.stringify({ webhook: `http://127.0.0.1:${MOCK_PORT}/robot` }) });
 
   const ccRows = [
-    { name: 'AirPods Pro', stock: 3, perDraw: 1 },
-    { name: '机械键盘', stock: 5, perDraw: 1 },
-    { name: 'CC 卫衣', stock: 10, perDraw: 2 },
+    { name: 'AirPods Pro', stock: 3, perDraw: 1, probability: 10 },
+    { name: '机械键盘', stock: 5, perDraw: 1, probability: 20 },
+    { name: 'CC 卫衣', stock: 10, perDraw: 2, probability: 70 },
   ];
+  // LP 不配置概率：验证老数据按库存可抽次数加权的降级行为
   const lpRows = [
     { name: '显示器', stock: 2, perDraw: 1 },
     { name: 'LP 双肩包', stock: 6, perDraw: 1 },
@@ -91,6 +93,32 @@ function mockServer() {
   check(w1.segments.length === 3 && w2.segments.length === 2, `CC 转盘 ${w1.segments.length} 格 / LP 转盘 ${w2.segments.length} 格`);
   check(!w1.segments.some((s) => s.name.includes('LP')), 'CC 转盘里没有 LP 的奖品');
   check(!w2.segments.some((s) => s.name.includes('CC')), 'LP 转盘里没有 CC 的奖品');
+  check(w1.segments.every((s) => s.weight === undefined), '实物扇区不下发 weight（面积与概率解耦）');
+  check(JSON.stringify(w1.segments.map((s) => s.probability)) === JSON.stringify([10, 20, 70]), 'CC 扇区携带实际概率 10/20/70');
+  check(Math.abs(w1.probabilitySum - 100) < 0.01, 'CC 设置概率合计 100%');
+  check(JSON.stringify(w2.segments.map((s) => s.probability)) === JSON.stringify([25, 75]), 'LP 未配置概率时按库存可抽次数换算（2/6 → 25/75）');
+
+  section('3b. 实物概率算法');
+  r = await api('/api/admin/state?team=cc');
+  const eff = r.data.prizes.map((p) => p.effectiveProbability).sort((a, b) => a - b);
+  check(JSON.stringify(eff) === JSON.stringify([10, 20, 70]), `后台实际概率 ${eff.join('/')}% 与设置一致`);
+  const plist = [
+    { id: 'a', stock: 10, perDraw: 1, probability: 10 },
+    { id: 'b', stock: 10, perDraw: 1, probability: 20 },
+    { id: 'c', stock: 10, perDraw: 1, probability: 0 },
+    { id: 'd', stock: 10, perDraw: 1, probability: 70 },
+  ];
+  check(lottery.pickByProbability(plist, () => 0.05) === 0, 'rand=0.05 命中 10% 礼品');
+  check(lottery.pickByProbability(plist, () => 0.2) === 1, 'rand=0.20 命中 20% 礼品');
+  check(lottery.pickByProbability(plist, () => 0.5) === 3, 'rand=0.50 命中 70% 礼品');
+  let zeroHit = 0;
+  for (let i = 0; i < 1000; i += 1) if (lottery.pickByProbability(plist) === 2) zeroHit += 1;
+  check(zeroHit === 0, '概率 0 的礼品 1000 次抽取均未命中');
+  const legacy = [{ id: 'x', stock: 3, perDraw: 1, probability: 0 }, { id: 'y', stock: 1, perDraw: 1, probability: 0 }];
+  check(lottery.pickByProbability(legacy, () => 0.5) === 0, '全部未配置概率时按库存可抽次数加权（3:1，0.5 落在第一项）');
+  check(lottery.pickByProbability(legacy, () => 0.9) === 1, '未配置概率时 0.9 落在第二项');
+  const effLegacy = lottery.effectiveProbabilities(legacy);
+  check(Math.abs(effLegacy.x - 75) < 0.01 && Math.abs(effLegacy.y - 25) < 0.01, '未配置概率时实际概率按库存换算 75/25');
 
   section('4. 同名用户可在两个团队独立存在');
   r = await api('/api/admin/participants', { method: 'POST', body: JSON.stringify({ name: '张三', chances: 1, team: 'cc' }) });
@@ -160,6 +188,7 @@ function mockServer() {
   check(wb.SheetNames.length === 3, `工作簿包含 ${wb.SheetNames.length} 个工作表：${wb.SheetNames.join(' / ')}`);
   const ccSheet = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[1]], { header: 1 });
   check(ccSheet.length >= 4 && String(ccSheet[0][1]).includes('礼品'), '明细表有表头与数据行');
+  check(ccSheet[0].includes('设置概率(%)') && ccSheet[0].includes('实际概率(%)'), '库存导出含设置概率/实际概率两列');
   check(ccSheet.some((row) => row.includes('AirPods Pro')), 'CC 明细表里能读到 AirPods Pro');
   const sum = XLSX.utils.sheet_to_json(wb.Sheets['团队汇总'], { header: 1 });
   check(sum.length === 3, `团队汇总表 ${sum.length - 1} 行（不含表头）`);
