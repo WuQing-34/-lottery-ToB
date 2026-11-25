@@ -65,11 +65,13 @@ function normalize(raw) {
   });
 
   const withTeam = (x) => (x && typeof x === 'object' ? { ...x, team: TEAM_IDS.includes(x.team) ? x.team : 'cc' } : x);
+  // 老数据没有 probability：补 0 表示「未配置」，抽奖时降级为按库存加权（行为不变）
+  const withProbability = (x) => (x && typeof x === 'object' && x.probability === undefined ? { ...x, probability: 0 } : x);
 
   return {
     version: 3,
     config: cfg,
-    prizes: (Array.isArray(raw.prizes) ? raw.prizes : []).map(withTeam),
+    prizes: (Array.isArray(raw.prizes) ? raw.prizes : []).map(withTeam).map(withProbability),
     participants: (Array.isArray(raw.participants) ? raw.participants : []).map(withTeam),
     records: (Array.isArray(raw.records) ? raw.records : []).map(withTeam),
     cashPrizes: Array.isArray(raw.cashPrizes) ? raw.cashPrizes : [],
